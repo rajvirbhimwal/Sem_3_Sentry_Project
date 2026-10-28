@@ -73,6 +73,21 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
     const [locationError, setLocationError] = useState("");
     const [showNotifications, setShowNotifications] = useState(false);
 
+    // Live reports connected to the backend
+    const [reports, setReports] = useState([]);
+    const [reportsLoading, setReportsLoading] = useState(false);
+    const [reportError, setReportError] = useState("");
+    const [reportSuccess, setReportSuccess] = useState("");
+    const [submittingReport, setSubmittingReport] = useState(false);
+    const [reportForm, setReportForm] = useState({
+        title: "",
+        category: "Waste Management",
+        description: "",
+        address: "",
+        latitude: "",
+        longitude: ""
+    });
+
     useEffect(() => {
         const alreadyAsked = sessionStorage.getItem("ecoconnect_location_prompted");
 
@@ -149,13 +164,102 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
     function choosePage(label) {
         setActivePage(label);
         setSidebarOpen(false);
+        setReportError("");
+        setReportSuccess("");
+    }
 
-        if (label === "Overview") {
+    async function fetchMyReports() {
+        const token = localStorage.getItem("ecoconnect_token");
+
+        if (!token) {
+            setReportError("Please log in again to view your reports.");
             return;
         }
 
-        // These sections are UI placeholders for the next development stage.
+        setReportsLoading(true);
+        setReportError("");
+
+        try {
+            const response = await fetch("http://localhost:5000/api/reports/my", {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || "Unable to load reports.");
+            }
+
+            setReports(data.reports || []);
+        } catch (error) {
+            setReportError(error.message || "Unable to load reports.");
+        } finally {
+            setReportsLoading(false);
+        }
     }
+
+    async function submitReport(event) {
+        event.preventDefault();
+        setReportError("");
+        setReportSuccess("");
+
+        const token = localStorage.getItem("ecoconnect_token");
+        if (!token) {
+            setReportError("Please log in again before submitting a report.");
+            return;
+        }
+
+        setSubmittingReport(true);
+
+        const reportData = {
+            title: reportForm.title.trim(),
+            category: reportForm.category,
+            description: reportForm.description.trim(),
+            location: {
+                address: reportForm.address.trim(),
+                ...(reportForm.latitude !== "" && reportForm.longitude !== "" ? {
+                    latitude: Number(reportForm.latitude),
+                    longitude: Number(reportForm.longitude)
+                } : {})
+            }
+        };
+
+        try {
+            const response = await fetch("http://localhost:5000/api/reports", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(reportData)
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || "Unable to submit your report.");
+            }
+
+            setReportSuccess("Your environmental report was submitted successfully.");
+            setReportForm({
+                title: "",
+                category: "Waste Management",
+                description: "",
+                address: "",
+                latitude: "",
+                longitude: ""
+            });
+            await fetchMyReports();
+        } catch (error) {
+            setReportError(error.message || "Unable to submit your report.");
+        } finally {
+            setSubmittingReport(false);
+        }
+    }
+
+    useEffect(() => {
+        if (activePage === "My reports") {
+            fetchMyReports();
+        }
+    }, [activePage]);
 
     const displayName =
         user?.name?.trim() ||
@@ -214,7 +318,9 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                             <span>{label}</span>
 
                             {label === "My reports" && (
-                                <span className="nav-count">03</span>
+                                <span className="nav-count">
+                                    {reports.length.toString().padStart(2, "0")}
+                                </span>
                             )}
 
                             {activePage === label && (
@@ -588,43 +694,267 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                                 </button>
                             </section>
                         </>
+                    ) : activePage === "Report an issue" ? (
+                        <section className="dashboard-glass-panel dashboard-placeholder eco-report-page">
+                            <span className="placeholder-icon"><Plus size={28} /></span>
+                            <span className="dashboard-overline">HELP YOUR COMMUNITY</span>
+                            <h1>Report an environmental issue</h1>
+                            <p>Tell us about an environmental concern in your neighbourhood.</p>
+
+                            {reportError && <p role="alert" className="report-message report-error">{reportError}</p>}
+                            {reportSuccess && <p role="status" className="report-message report-success">{reportSuccess}</p>}
+
+                            <form className="eco-report-form" onSubmit={submitReport}>
+                                <div className="report-form-heading">
+                                    <span className="report-form-step">REPORT AN ISSUE</span>
+                                    <h2>Help make your neighbourhood cleaner.</h2>
+                                    <p>Share the details below so your community can take action.</p>
+                                </div>
+
+                                <div className="report-form-grid">
+                                    <div className="report-field">
+                                        <label htmlFor="report-title">Report title</label>
+                                        <input
+                                            id="report-title"
+                                            type="text"
+                                            maxLength={120}
+                                            placeholder="e.g. Garbage dumped near a lake"
+                                            value={reportForm.title}
+                                            onChange={(event) =>
+                                                setReportForm({
+                                                    ...reportForm,
+                                                    title: event.target.value
+                                                })
+                                            }
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="report-field">
+                                        <label htmlFor="report-category">Issue category</label>
+                                        <select
+                                            id="report-category"
+                                            value={reportForm.category}
+                                            onChange={(event) =>
+                                                setReportForm({
+                                                    ...reportForm,
+                                                    category: event.target.value
+                                                })
+                                            }
+                                            required
+                                        >
+                                            <option value="Waste Management">Waste Management</option>
+                                            <option value="Water Pollution">Water Pollution</option>
+                                            <option value="Air Pollution">Air Pollution</option>
+                                            <option value="Deforestation">Deforestation</option>
+                                            <option value="Damaged Green Spaces">
+                                                Damaged Green Spaces
+                                            </option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="report-field report-field-full">
+                                        <label htmlFor="report-description">Describe the issue</label>
+                                        <textarea
+                                            id="report-description"
+                                            rows={5}
+                                            maxLength={2000}
+                                            placeholder="Explain what happened, where it happened, and how it affects the community..."
+                                            value={reportForm.description}
+                                            onChange={(event) =>
+                                                setReportForm({
+                                                    ...reportForm,
+                                                    description: event.target.value
+                                                })
+                                            }
+                                            required
+                                        />
+                                        <span className="report-field-hint">
+                                            Include useful details to help the response team.
+                                        </span>
+                                    </div>
+
+                                    <div className="report-field report-field-full">
+                                        <label htmlFor="report-address">Location or address</label>
+                                        <input
+                                            id="report-address"
+                                            type="text"
+                                            placeholder="Enter a street, landmark, sector, or area"
+                                            value={reportForm.address}
+                                            onChange={(event) =>
+                                                setReportForm({
+                                                    ...reportForm,
+                                                    address: event.target.value
+                                                })
+                                            }
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="report-field">
+                                        <label htmlFor="report-latitude">
+                                            Latitude <span>(optional)</span>
+                                        </label>
+                                        <input
+                                            id="report-latitude"
+                                            type="number"
+                                            step="any"
+                                            min="-90"
+                                            max="90"
+                                            placeholder="e.g. 28.6139"
+                                            value={reportForm.latitude}
+                                            onChange={(event) =>
+                                                setReportForm({
+                                                    ...reportForm,
+                                                    latitude: event.target.value
+                                                })
+                                            }
+                                        />
+                                    </div>
+
+                                    <div className="report-field">
+                                        <label htmlFor="report-longitude">
+                                            Longitude <span>(optional)</span>
+                                        </label>
+                                        <input
+                                            id="report-longitude"
+                                            type="number"
+                                            step="any"
+                                            min="-180"
+                                            max="180"
+                                            placeholder="e.g. 77.2090"
+                                            value={reportForm.longitude}
+                                            onChange={(event) =>
+                                                setReportForm({
+                                                    ...reportForm,
+                                                    longitude: event.target.value
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="report-form-actions">
+                                    <button
+                                        type="button"
+                                        className="report-location-button"
+                                        onClick={() => {
+                                            if (!navigator.geolocation) {
+                                                setReportError(
+                                                    "Location is not supported by this browser."
+                                                );
+                                                return;
+                                            }
+
+                                            navigator.geolocation.getCurrentPosition(
+                                                (position) => {
+                                                    setReportForm((previous) => ({
+                                                        ...previous,
+                                                        latitude: String(position.coords.latitude),
+                                                        longitude: String(position.coords.longitude)
+                                                    }));
+                                                    setReportError("");
+                                                },
+                                                () => {
+                                                    setReportError(
+                                                        "Unable to retrieve your location. Enter it manually."
+                                                    );
+                                                }
+                                            );
+                                        }}
+                                    >
+                                        <MapPin size={17} />
+                                        Use my current coordinates
+                                    </button>
+
+                                    <button
+                                        type="submit"
+                                        className="dashboard-primary-button report-submit-button"
+                                        disabled={submittingReport}
+                                    >
+                                        <Plus size={18} />
+                                        {submittingReport ? "Submitting..." : "Submit report"}
+                                    </button>
+                                </div>
+                            </form>
+                        </section>
+                    ) : activePage === "My reports" ? (
+                        <section className="dashboard-glass-panel dashboard-placeholder eco-report-page">
+                            <span className="placeholder-icon"><FileText size={28} /></span>
+                            <span className="dashboard-overline">YOUR CONTRIBUTION</span>
+                            <h1>My reports</h1>
+                            <p>Track the environmental issues you have reported.</p>
+
+                            {reportError && <p role="alert" className="report-message report-error">{reportError}</p>}
+
+                            {reportsLoading ? (
+                                <p>Loading your reports...</p>
+                            ) : reports.length === 0 ? (
+                                <p>You haven't submitted any reports yet.</p>
+                            ) : (
+                                <div className="eco-my-reports-list">
+                                    {reports.map((report) => (
+                                        <article key={report._id} className="eco-my-report">
+                                            <div className="eco-report-card-header">
+                                                <div className="eco-report-card-title">
+                                                    <span className="eco-report-card-category">
+                                                        {report.category}
+                                                    </span>
+
+                                                    <h3>{report.title}</h3>
+                                                </div>
+
+                                                <span
+                                                    className={`dashboard-status status-${(
+                                                        report.status || "Submitted"
+                                                    ).toLowerCase().replace(/\s+/g, "-")}`}
+                                                >
+                                                    {report.status || "Submitted"}
+                                                </span>
+                                            </div>
+
+                                            <p className="eco-report-card-description">
+                                                {report.description}
+                                            </p>
+
+                                            <div className="eco-report-card-location">
+                                                <MapPin size={16} />
+                                                <span>{report.location?.address || "Location not provided"}</span>
+                                            </div>
+
+                                            <div className="eco-report-card-footer">
+                                                <span>
+                                                    Submitted:{" "}
+                                                    {new Date(report.createdAt).toLocaleDateString()}
+                                                </span>
+
+                                                {report.location?.latitude != null &&
+                                                    report.location?.longitude != null && (
+                                                        <span className="eco-report-card-coordinates">
+                                                            {Number(report.location.latitude).toFixed(4)},{" "}
+                                                            {Number(report.location.longitude).toFixed(4)}
+                                                        </span>
+                                                    )}
+                                            </div>
+                                        </article>
+                                    ))}
+                                </div>
+                            )}
+
+                            <button className="dashboard-primary-button" onClick={() => choosePage("Report an issue")}>
+                                <Plus size={18} /> Submit another report
+                            </button>
+                        </section>
                     ) : (
                         <section className="dashboard-glass-panel dashboard-placeholder">
                             <span className="placeholder-icon">
-                                {activePage === "My reports" ? (
-                                    <FileText size={28} />
-                                ) : activePage === "Explore map" ? (
-                                    <Compass size={28} />
-                                ) : activePage === "Community impact" ? (
-                                    <Trees size={28} />
-                                ) : activePage === "My profile" ? (
-                                    <CircleUserRound size={28} />
-                                ) : (
-                                    <Plus size={28} />
-                                )}
+                                {activePage === "Explore map" ? <Compass size={28} /> : activePage === "Community impact" ? <Trees size={28} /> : <CircleUserRound size={28} />}
                             </span>
-
                             <span className="dashboard-overline">COMING TO ECOCONNECT</span>
-
                             <h1>{activePage}</h1>
-
-                            <p>
-                                This section is ready for the next development stage. We'll
-                                connect it to the backend and MongoDB rather than displaying
-                                invented account information.
-                            </p>
-
-                            {activePage === "Report an issue" && (
-                                <p>
-                                    The next step is to build the report form with issue
-                                    category, description, location, and optional photos.
-                                </p>
-                            )}
-
-                            <button
-                                className="dashboard-primary-button"
-                                onClick={() => setActivePage("Overview")}
-                            >
+                            <p>This section will be connected to your account and environmental data in a future development stage.</p>
+                            <button className="dashboard-primary-button" onClick={() => choosePage("Overview")}>
                                 <ArrowRight size={17} /> Back to overview
                             </button>
                         </section>

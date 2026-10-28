@@ -6,6 +6,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const connectDB = require("./src/db");
 const authRoutes = require("./src/routes/auth.routes");
+const reportRoutes = require("./src/routes/report.routes");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -43,11 +44,12 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/reports", reportRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: `Route not found: ${req.method} ${req.originalUrl} `
+    message: `Route not found: ${req.method} ${req.originalUrl}`
   });
 });
 
@@ -67,11 +69,14 @@ async function startServer() {
   try {
     await connectDB();
 
+
     app.listen(PORT, () => {
       console.log(`EcoConnect API running at http://localhost:${PORT}`);
       console.log(`Health check: http://localhost:${PORT}/api/health`);
       console.log("MongoDB connection established.");
     });
+
+
   } catch (error) {
     console.error("Failed to start EcoConnect:", error.message);
     process.exit(1);
@@ -79,4 +84,3 @@ async function startServer() {
 }
 
 startServer();
-
