@@ -17,6 +17,7 @@ import {
     Menu,
     Plus,
     Recycle,
+    Search,
     ShieldCheck,
     Sparkles,
     Trees,
@@ -75,9 +76,13 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
 
     // Live reports connected to the backend
     const [reports, setReports] = useState([]);
+    const [reportSearch, setReportSearch] = useState("");
+    const [reportCategoryFilter, setReportCategoryFilter] = useState("All");
+    const [reportStatusFilter, setReportStatusFilter] = useState("All");
     const [reportsLoading, setReportsLoading] = useState(false);
     const [reportError, setReportError] = useState("");
     const [reportSuccess, setReportSuccess] = useState("");
+    const [selectedReport, setSelectedReport] = useState(null);
     const [submittingReport, setSubmittingReport] = useState(false);
     const [reportForm, setReportForm] = useState({
         title: "",
@@ -255,6 +260,11 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
         }
     }
 
+    // Load the user's report count as soon as the dashboard opens.
+    useEffect(() => {
+        fetchMyReports();
+    }, []);
+
     useEffect(() => {
         if (activePage === "My reports") {
             fetchMyReports();
@@ -273,6 +283,36 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
         .slice(0, 2)
         .map((part) => part[0].toUpperCase())
         .join("");
+
+    const recentReports = reports.length > 0
+        ? reports.map((report) => ({
+            id: report._id,
+            title: report.title,
+            category: report.category,
+            status: report.status,
+            icon: FileText,
+            color: "mint"
+        }))
+        : sampleReports;
+
+    const filteredReports = reports.filter((report) => {
+        const search = reportSearch.trim().toLowerCase();
+        const matchesSearch =
+            (report.title || "").toLowerCase().includes(search) ||
+            (report.description || "").toLowerCase().includes(search) ||
+            (report.location?.address || "").toLowerCase().includes(search);
+        const matchesCategory =
+            reportCategoryFilter === "All" || report.category === reportCategoryFilter;
+        const matchesStatus =
+            reportStatusFilter === "All" || (report.status || "Submitted") === reportStatusFilter;
+        return matchesSearch && matchesCategory && matchesStatus;
+    });
+
+    function clearReportFilters() {
+        setReportSearch("");
+        setReportCategoryFilter("All");
+        setReportStatusFilter("All");
+    }
 
     return (
         <div className="eco-dashboard">
@@ -318,9 +358,7 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                             <span>{label}</span>
 
                             {label === "My reports" && (
-                                <span className="nav-count">
-                                    {reports.length.toString().padStart(2, "0")}
-                                </span>
+                                <span className="nav-count">{reports.length.toString().padStart(2, "0")}</span>
                             )}
 
                             {activePage === label && (
@@ -573,7 +611,7 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                                     </div>
 
                                     <div className="dashboard-report-list">
-                                        {sampleReports.map((report) => {
+                                        {recentReports.map((report) => {
                                             const Icon = report.icon;
 
                                             return (
@@ -705,176 +743,64 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                             {reportSuccess && <p role="status" className="report-message report-success">{reportSuccess}</p>}
 
                             <form className="eco-report-form" onSubmit={submitReport}>
-                                <div className="report-form-heading">
-                                    <span className="report-form-step">REPORT AN ISSUE</span>
-                                    <h2>Help make your neighbourhood cleaner.</h2>
-                                    <p>Share the details below so your community can take action.</p>
+                                <div className="eco-form-field">
+                                    <label htmlFor="report-title">Report title</label>
+                                    <input id="report-title" type="text" maxLength={120} placeholder="e.g. Garbage dumped near a lake" value={reportForm.title} onChange={(event) => setReportForm({ ...reportForm, title: event.target.value })} required />
                                 </div>
 
-                                <div className="report-form-grid">
-                                    <div className="report-field">
-                                        <label htmlFor="report-title">Report title</label>
-                                        <input
-                                            id="report-title"
-                                            type="text"
-                                            maxLength={120}
-                                            placeholder="e.g. Garbage dumped near a lake"
-                                            value={reportForm.title}
-                                            onChange={(event) =>
-                                                setReportForm({
-                                                    ...reportForm,
-                                                    title: event.target.value
-                                                })
-                                            }
-                                            required
-                                        />
-                                    </div>
+                                <div className="eco-form-field">
+                                    <label htmlFor="report-category">Issue category</label>
+                                    <select id="report-category" value={reportForm.category} onChange={(event) => setReportForm({ ...reportForm, category: event.target.value })} required>
+                                        <option value="Waste Management">Waste Management</option>
+                                        <option value="Water Pollution">Water Pollution</option>
+                                        <option value="Air Pollution">Air Pollution</option>
+                                        <option value="Deforestation">Deforestation</option>
+                                        <option value="Damaged Green Spaces">Damaged Green Spaces</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
 
-                                    <div className="report-field">
-                                        <label htmlFor="report-category">Issue category</label>
-                                        <select
-                                            id="report-category"
-                                            value={reportForm.category}
-                                            onChange={(event) =>
-                                                setReportForm({
-                                                    ...reportForm,
-                                                    category: event.target.value
-                                                })
-                                            }
-                                            required
-                                        >
-                                            <option value="Waste Management">Waste Management</option>
-                                            <option value="Water Pollution">Water Pollution</option>
-                                            <option value="Air Pollution">Air Pollution</option>
-                                            <option value="Deforestation">Deforestation</option>
-                                            <option value="Damaged Green Spaces">
-                                                Damaged Green Spaces
-                                            </option>
-                                            <option value="Other">Other</option>
-                                        </select>
-                                    </div>
+                                <div className="eco-form-field eco-form-field-full">
+                                    <label htmlFor="report-description">Description</label>
+                                    <textarea id="report-description" rows={5} maxLength={2000} placeholder="Describe the environmental issue..." value={reportForm.description} onChange={(event) => setReportForm({ ...reportForm, description: event.target.value })} required />
+                                </div>
 
-                                    <div className="report-field report-field-full">
-                                        <label htmlFor="report-description">Describe the issue</label>
-                                        <textarea
-                                            id="report-description"
-                                            rows={5}
-                                            maxLength={2000}
-                                            placeholder="Explain what happened, where it happened, and how it affects the community..."
-                                            value={reportForm.description}
-                                            onChange={(event) =>
-                                                setReportForm({
-                                                    ...reportForm,
-                                                    description: event.target.value
-                                                })
-                                            }
-                                            required
-                                        />
-                                        <span className="report-field-hint">
-                                            Include useful details to help the response team.
-                                        </span>
-                                    </div>
+                                <div className="eco-form-field eco-form-field-full">
+                                    <label htmlFor="report-address">Location or address</label>
+                                    <input id="report-address" type="text" placeholder="Enter the issue's location" value={reportForm.address} onChange={(event) => setReportForm({ ...reportForm, address: event.target.value })} required />
+                                </div>
 
-                                    <div className="report-field report-field-full">
-                                        <label htmlFor="report-address">Location or address</label>
-                                        <input
-                                            id="report-address"
-                                            type="text"
-                                            placeholder="Enter a street, landmark, sector, or area"
-                                            value={reportForm.address}
-                                            onChange={(event) =>
-                                                setReportForm({
-                                                    ...reportForm,
-                                                    address: event.target.value
-                                                })
-                                            }
-                                            required
-                                        />
+                                <div className="eco-report-coordinate-grid eco-form-field-full">
+                                    <div className="eco-form-field">
+                                        <label htmlFor="report-latitude">Latitude <span>(optional)</span></label>
+                                        <input id="report-latitude" type="number" step="any" min="-90" max="90" value={reportForm.latitude} onChange={(event) => setReportForm({ ...reportForm, latitude: event.target.value })} />
                                     </div>
-
-                                    <div className="report-field">
-                                        <label htmlFor="report-latitude">
-                                            Latitude <span>(optional)</span>
-                                        </label>
-                                        <input
-                                            id="report-latitude"
-                                            type="number"
-                                            step="any"
-                                            min="-90"
-                                            max="90"
-                                            placeholder="e.g. 28.6139"
-                                            value={reportForm.latitude}
-                                            onChange={(event) =>
-                                                setReportForm({
-                                                    ...reportForm,
-                                                    latitude: event.target.value
-                                                })
-                                            }
-                                        />
-                                    </div>
-
-                                    <div className="report-field">
-                                        <label htmlFor="report-longitude">
-                                            Longitude <span>(optional)</span>
-                                        </label>
-                                        <input
-                                            id="report-longitude"
-                                            type="number"
-                                            step="any"
-                                            min="-180"
-                                            max="180"
-                                            placeholder="e.g. 77.2090"
-                                            value={reportForm.longitude}
-                                            onChange={(event) =>
-                                                setReportForm({
-                                                    ...reportForm,
-                                                    longitude: event.target.value
-                                                })
-                                            }
-                                        />
+                                    <div className="eco-form-field">
+                                        <label htmlFor="report-longitude">Longitude <span>(optional)</span></label>
+                                        <input id="report-longitude" type="number" step="any" min="-180" max="180" value={reportForm.longitude} onChange={(event) => setReportForm({ ...reportForm, longitude: event.target.value })} />
                                     </div>
                                 </div>
 
-                                <div className="report-form-actions">
-                                    <button
-                                        type="button"
-                                        className="report-location-button"
-                                        onClick={() => {
-                                            if (!navigator.geolocation) {
-                                                setReportError(
-                                                    "Location is not supported by this browser."
-                                                );
-                                                return;
-                                            }
-
-                                            navigator.geolocation.getCurrentPosition(
-                                                (position) => {
-                                                    setReportForm((previous) => ({
-                                                        ...previous,
-                                                        latitude: String(position.coords.latitude),
-                                                        longitude: String(position.coords.longitude)
-                                                    }));
-                                                    setReportError("");
-                                                },
-                                                () => {
-                                                    setReportError(
-                                                        "Unable to retrieve your location. Enter it manually."
-                                                    );
-                                                }
-                                            );
-                                        }}
-                                    >
-                                        <MapPin size={17} />
-                                        Use my current coordinates
+                                <div className="eco-report-form-actions eco-form-field-full">
+                                    <button type="button" className="dashboard-secondary-button" onClick={() => {
+                                        if (!navigator.geolocation) {
+                                            setReportError("Location is not supported by this browser. Enter it manually.");
+                                            return;
+                                        }
+                                        navigator.geolocation.getCurrentPosition(
+                                            (position) => setReportForm((previous) => ({
+                                                ...previous,
+                                                latitude: String(position.coords.latitude),
+                                                longitude: String(position.coords.longitude)
+                                            })),
+                                            () => setReportError("Unable to retrieve your location. Enter it manually.")
+                                        );
+                                    }}>
+                                        <MapPin size={16} /> Use my current coordinates
                                     </button>
 
-                                    <button
-                                        type="submit"
-                                        className="dashboard-primary-button report-submit-button"
-                                        disabled={submittingReport}
-                                    >
-                                        <Plus size={18} />
-                                        {submittingReport ? "Submitting..." : "Submit report"}
+                                    <button type="submit" className="dashboard-primary-button" disabled={submittingReport}>
+                                        <Plus size={18} /> {submittingReport ? "Submitting..." : "Submit report"}
                                     </button>
                                 </div>
                             </form>
@@ -893,53 +819,82 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                             ) : reports.length === 0 ? (
                                 <p>You haven't submitted any reports yet.</p>
                             ) : (
-                                <div className="eco-my-reports-list">
-                                    {reports.map((report) => (
-                                        <article key={report._id} className="eco-my-report">
-                                            <div className="eco-report-card-header">
-                                                <div className="eco-report-card-title">
-                                                    <span className="eco-report-card-category">
-                                                        {report.category}
-                                                    </span>
-
-                                                    <h3>{report.title}</h3>
-                                                </div>
-
-                                                <span
-                                                    className={`dashboard-status status-${(
-                                                        report.status || "Submitted"
-                                                    ).toLowerCase().replace(/\s+/g, "-")}`}
+                                <>
+                                    <div className="eco-report-toolbar">
+                                        <label className="eco-report-search">
+                                            <Search size={18} aria-hidden="true" />
+                                            <input
+                                                type="search"
+                                                placeholder="Search by title, description or location..."
+                                                value={reportSearch}
+                                                onChange={(event) => setReportSearch(event.target.value)}
+                                                aria-label="Search your reports"
+                                            />
+                                        </label>
+                                        <select
+                                            value={reportCategoryFilter}
+                                            onChange={(event) => setReportCategoryFilter(event.target.value)}
+                                            aria-label="Filter reports by category"
+                                        >
+                                            <option value="All">All categories</option>
+                                            <option value="Waste Management">Waste Management</option>
+                                            <option value="Water Pollution">Water Pollution</option>
+                                            <option value="Air Pollution">Air Pollution</option>
+                                            <option value="Deforestation">Deforestation</option>
+                                            <option value="Damaged Green Spaces">Damaged Green Spaces</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                        <select
+                                            value={reportStatusFilter}
+                                            onChange={(event) => setReportStatusFilter(event.target.value)}
+                                            aria-label="Filter reports by status"
+                                        >
+                                            <option value="All">All statuses</option>
+                                            <option value="Submitted">Submitted</option>
+                                            <option value="Under Review">Under Review</option>
+                                            <option value="In Progress">In Progress</option>
+                                            <option value="Resolved">Resolved</option>
+                                        </select>
+                                        <button type="button" className="eco-report-clear" onClick={clearReportFilters}>
+                                            Clear filters
+                                        </button>
+                                    </div>
+                                    <p className="eco-report-results">Showing {filteredReports.length} of {reports.length} reports</p>
+                                    {filteredReports.length === 0 ? (
+                                        <div className="eco-report-no-results">
+                                            <Search size={22} />
+                                            <strong>No matching reports</strong>
+                                            <span>Try changing your search or filters.</span>
+                                        </div>
+                                    ) : (
+                                        <div className="eco-my-reports-list">
+                                            {filteredReports.map((report) => (
+                                                <article
+                                                    key={report._id}
+                                                    className="eco-my-report"
+                                                    tabIndex={0}
+                                                    role="button"
+                                                    aria-label={`View details for ${report.title}`}
+                                                    onClick={() => setSelectedReport(report)}
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === "Enter" || event.key === " ") {
+                                                            event.preventDefault();
+                                                            setSelectedReport(report);
+                                                        }
+                                                    }}
                                                 >
-                                                    {report.status || "Submitted"}
-                                                </span>
-                                            </div>
-
-                                            <p className="eco-report-card-description">
-                                                {report.description}
-                                            </p>
-
-                                            <div className="eco-report-card-location">
-                                                <MapPin size={16} />
-                                                <span>{report.location?.address || "Location not provided"}</span>
-                                            </div>
-
-                                            <div className="eco-report-card-footer">
-                                                <span>
-                                                    Submitted:{" "}
-                                                    {new Date(report.createdAt).toLocaleDateString()}
-                                                </span>
-
-                                                {report.location?.latitude != null &&
-                                                    report.location?.longitude != null && (
-                                                        <span className="eco-report-card-coordinates">
-                                                            {Number(report.location.latitude).toFixed(4)},{" "}
-                                                            {Number(report.location.longitude).toFixed(4)}
-                                                        </span>
-                                                    )}
-                                            </div>
-                                        </article>
-                                    ))}
-                                </div>
+                                                    <h3>{report.title}</h3>
+                                                    <p>{report.description}</p>
+                                                    <p><MapPin size={15} /> {report.location?.address || "Location not provided"}</p>
+                                                    <p>Category: {report.category}</p>
+                                                    <span className={`dashboard-status status-${(report.status || "Submitted").toLowerCase().replace(/\s+/g, "-")}`}>{report.status || "Submitted"}</span>
+                                                    <small>Submitted: {report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "Date unavailable"}</small>
+                                                    <span className="eco-report-view-link">View report details <ArrowRight size={15} /></span>
+                                                </article>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
                             )}
 
                             <button className="dashboard-primary-button" onClick={() => choosePage("Report an issue")}>
@@ -969,6 +924,36 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                     </footer>
                 </div>
             </main>
+
+            {selectedReport && (
+                <div className="eco-detail-backdrop" role="presentation" onMouseDown={(event) => {
+                    if (event.target === event.currentTarget) setSelectedReport(null);
+                }}>
+                    <section className="eco-detail-modal" role="dialog" aria-modal="true" aria-labelledby="eco-detail-title">
+                        <button className="eco-detail-close" onClick={() => setSelectedReport(null)} aria-label="Close report details">
+                            <X size={20} />
+                        </button>
+                        <span className="dashboard-overline">REPORT DETAILS</span>
+                        <h2 id="eco-detail-title">{selectedReport.title}</h2>
+                        <div className="eco-detail-status-row">
+                            <span className={`dashboard-status status-${(selectedReport.status || "Submitted").toLowerCase().replace(/\s+/g, "-")}`}>
+                                {selectedReport.status || "Submitted"}
+                            </span>
+                            <small>Report ID: {selectedReport._id || "Unavailable"}</small>
+                        </div>
+                        <div className="eco-detail-grid">
+                            <div><span>Category</span><strong>{selectedReport.category || "Not specified"}</strong></div>
+                            <div><span>Submitted</span><strong>{selectedReport.createdAt ? new Date(selectedReport.createdAt).toLocaleString() : "Date unavailable"}</strong></div>
+                            <div className="eco-detail-location"><span>Location</span><strong><MapPin size={16} /> {selectedReport.location?.address || "Location not provided"}</strong></div>
+                        </div>
+                        <div className="eco-detail-description">
+                            <span>Description</span>
+                            <p>{selectedReport.description || "No description provided."}</p>
+                        </div>
+                        <button className="dashboard-primary-button" onClick={() => setSelectedReport(null)}>Close details</button>
+                    </section>
+                </div>
+            )}
 
             {locationPrompt && (
                 <div
