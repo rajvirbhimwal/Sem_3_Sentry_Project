@@ -3,6 +3,7 @@ import {
     Activity,
     ArrowDownRight,
     ArrowRight,
+    BadgeCheck,
     Bell,
     CheckCircle2,
     ChevronRight,
@@ -10,6 +11,7 @@ import {
     Clock3,
     Compass,
     FileText,
+    ImagePlus,
     Leaf,
     LocateFixed,
     LogOut,
@@ -26,36 +28,7 @@ import {
 } from "lucide-react";
 
 import "./Dashboard.css";
-
-const sampleReports = [
-    {
-        id: "EC-1024",
-        title: "Plastic waste near a lake",
-        category: "Waste & litter",
-        location: "Location not yet verified",
-        status: "In progress",
-        icon: Recycle,
-        color: "mint"
-    },
-    {
-        id: "EC-1023",
-        title: "Drainage flowing into a pond",
-        category: "Water pollution",
-        location: "Location not yet verified",
-        status: "Under review",
-        icon: Waves,
-        color: "blue"
-    },
-    {
-        id: "EC-1022",
-        title: "Community garden needs attention",
-        category: "Green spaces",
-        location: "Location not yet verified",
-        status: "Resolved",
-        icon: Trees,
-        color: "lime"
-    }
-];
+import EcoMap from "./Component/EcoMap";
 
 const navigation = [
     { label: "Overview", icon: Activity },
@@ -65,7 +38,7 @@ const navigation = [
     { label: "My profile", icon: CircleUserRound }
 ];
 
-export default function Dashboard({ user, onLogout, onBackHome }) {
+export default function Dashboard({ user, onLogout, onBackHome, onUpdateUser }) {
     const [activePage, setActivePage] = useState("Overview");
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [locationPrompt, setLocationPrompt] = useState(false);
@@ -74,8 +47,10 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
     const [locationError, setLocationError] = useState("");
     const [showNotifications, setShowNotifications] = useState(false);
 
-    // Live reports connected to the backend
+    // Live reports & impact connected to the backend
     const [reports, setReports] = useState([]);
+    const [mapReports, setMapReports] = useState([]);
+    const [communityImpact, setCommunityImpact] = useState(null);
     const [reportSearch, setReportSearch] = useState("");
     const [reportCategoryFilter, setReportCategoryFilter] = useState("All");
     const [reportStatusFilter, setReportStatusFilter] = useState("All");
@@ -92,6 +67,18 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
         latitude: "",
         longitude: ""
     });
+
+    // Phase 1: Image upload states
+    const [reportImages, setReportImages] = useState([]);
+    const [imagePreviews, setImagePreviews] = useState([]);
+
+    // Phase 5: Profile edit states
+    const [profileName, setProfileName] = useState(user?.name || "");
+    const [profileBusy, setProfileBusy] = useState(false);
+
+    useEffect(() => {
+        setProfileName(user?.name || "");
+    }, [user]);
 
     useEffect(() => {
         const alreadyAsked = sessionStorage.getItem("ecoconnect_location_prompted");
@@ -110,9 +97,7 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                         setLocationState("denied");
                     }
                 })
-                .catch(() => {
-                    // Some browsers do not support permission queries.
-                });
+                .catch(() => {});
         }
     }, []);
 
@@ -138,9 +123,6 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                 setLocationPrompt(false);
 
                 sessionStorage.setItem("ecoconnect_location_prompted", "true");
-
-                // Coordinates are kept in component state only.
-                // They are not automatically sent to the backend.
             },
             (error) => {
                 setLocationState(
@@ -173,6 +155,26 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
         setReportSuccess("");
     }
 
+    function handleImageChange(event) {
+        const files = Array.from(event.target.files || []);
+        if (files.length + reportImages.length > 4) {
+            setReportError("You can upload up to 4 images per report.");
+            return;
+        }
+        setReportError("");
+        const updatedFiles = [...reportImages, ...files].slice(0, 4);
+        imagePreviews.forEach((url) => URL.revokeObjectURL(url));
+        setReportImages(updatedFiles);
+        setImagePreviews(updatedFiles.map((file) => URL.createObjectURL(file)));
+        event.target.value = "";
+    }
+
+    function removeSelectedImage(index) {
+        URL.revokeObjectURL(imagePreviews[index]);
+        setReportImages((prev) => prev.filter((_, i) => i !== index));
+        setImagePreviews((prev) => prev.filter((_, i) => i !== index));
+    }
+
     async function fetchMyReports() {
         const token = localStorage.getItem("ecoconnect_token");
 
@@ -202,6 +204,36 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
         }
     }
 
+    async function fetchMapReports() {
+        const token = localStorage.getItem("ecoconnect_token");
+        if (!token) return;
+
+        try {
+            const response = await fetch("http://localhost:5000/api/reports/map", {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await response.json();
+            if (response.ok) {
+                setMapReports(data.reports || []);
+            }
+        } catch {}
+    }
+
+    async function fetchCommunityImpact() {
+        const token = localStorage.getItem("ecoconnect_token");
+        if (!token) return;
+
+        try {
+            const response = await fetch("http://localhost:5000/api/reports/impact", {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await response.json();
+            if (response.ok) {
+                setCommunityImpact(data.impact || null);
+            }
+        } catch {}
+    }
+
     async function submitReport(event) {
         event.preventDefault();
         setReportError("");
@@ -215,27 +247,34 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
 
         setSubmittingReport(true);
 
-        const reportData = {
-            title: reportForm.title.trim(),
-            category: reportForm.category,
-            description: reportForm.description.trim(),
-            location: {
+        const formData = new FormData();
+        formData.append("title", reportForm.title.trim());
+        formData.append("category", reportForm.category);
+        formData.append("description", reportForm.description.trim());
+        formData.append(
+            "location",
+            JSON.stringify({
                 address: reportForm.address.trim(),
-                ...(reportForm.latitude !== "" && reportForm.longitude !== "" ? {
-                    latitude: Number(reportForm.latitude),
-                    longitude: Number(reportForm.longitude)
-                } : {})
-            }
-        };
+                ...(reportForm.latitude !== "" && reportForm.longitude !== ""
+                    ? {
+                          latitude: Number(reportForm.latitude),
+                          longitude: Number(reportForm.longitude)
+                      }
+                    : {})
+            })
+        );
+
+        reportImages.forEach((file) => {
+            formData.append("images", file);
+        });
 
         try {
             const response = await fetch("http://localhost:5000/api/reports", {
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify(reportData)
+                body: formData
             });
             const data = await response.json();
 
@@ -252,7 +291,11 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                 latitude: "",
                 longitude: ""
             });
+            imagePreviews.forEach((url) => URL.revokeObjectURL(url));
+            setReportImages([]);
+            setImagePreviews([]);
             await fetchMyReports();
+            await fetchMapReports();
         } catch (error) {
             setReportError(error.message || "Unable to submit your report.");
         } finally {
@@ -260,14 +303,50 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
         }
     }
 
-    // Load the user's report count as soon as the dashboard opens.
+    async function saveProfile(event) {
+        event.preventDefault();
+        setReportError("");
+        setReportSuccess("");
+
+        const token = localStorage.getItem("ecoconnect_token");
+        if (!token) return;
+
+        setProfileBusy(true);
+        try {
+            const response = await fetch("http://localhost:5000/api/auth/profile", {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ name: profileName })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || "Unable to update profile.");
+            }
+            if (onUpdateUser && data.user) {
+                onUpdateUser(data.user);
+            }
+            setReportSuccess("Profile updated successfully.");
+        } catch (error) {
+            setReportError(error.message || "Unable to update profile.");
+        } finally {
+            setProfileBusy(false);
+        }
+    }
+
     useEffect(() => {
         fetchMyReports();
     }, []);
 
     useEffect(() => {
-        if (activePage === "My reports") {
+        if (activePage === "My reports" || activePage === "Overview") {
             fetchMyReports();
+        } else if (activePage === "Explore map") {
+            fetchMapReports();
+        } else if (activePage === "Community impact") {
+            fetchCommunityImpact();
         }
     }, [activePage]);
 
@@ -284,16 +363,35 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
         .map((part) => part[0].toUpperCase())
         .join("");
 
-    const recentReports = reports.length > 0
-        ? reports.map((report) => ({
-            id: report._id,
-            title: report.title,
-            category: report.category,
-            status: report.status,
-            icon: FileText,
-            color: "mint"
-        }))
-        : sampleReports;
+    // Live Overview metrics
+    const submittedCount = reports.filter((r) => (r.status || "Submitted") === "Submitted").length;
+    const activeCount = reports.filter((r) => ["Under Review", "In Progress"].includes(r.status)).length;
+    const resolvedCount = reports.filter((r) => r.status === "Resolved").length;
+
+    // Live notifications built from statusNotes on the user's reports
+    const liveNotifications = reports
+        .flatMap((r) =>
+            (r.statusNotes || []).map((n, idx) => ({
+                id: `${r._id}-${idx}`,
+                report: r,
+                title: r.title,
+                status: n.status,
+                note: n.note,
+                role: n.updatedByRole,
+                updatedAt: n.updatedAt
+            }))
+        )
+        .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+    const recentReports = reports.slice(0, 4).map((report) => ({
+        raw: report,
+        id: report._id,
+        title: report.title,
+        category: report.category,
+        status: report.status || "Submitted",
+        icon: FileText,
+        color: "mint"
+    }));
 
     const filteredReports = reports.filter((report) => {
         const search = reportSearch.trim().toLowerCase();
@@ -350,8 +448,7 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                     {navigation.map(({ label, icon: Icon }) => (
                         <button
                             key={label}
-                            className={`dashboard-nav-item ${activePage === label ? "active" : ""
-                                }`}
+                            className={`dashboard-nav-item ${activePage === label ? "active" : ""}`}
                             onClick={() => choosePage(label)}
                         >
                             <Icon size={18} />
@@ -427,8 +524,7 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
 
                     <div className="dashboard-topbar-actions">
                         <button
-                            className={`location-chip ${locationState === "granted" ? "location-active" : ""
-                                }`}
+                            className={`location-chip ${locationState === "granted" ? "location-active" : ""}`}
                             onClick={() => setLocationPrompt(true)}
                             title="Manage location access"
                         >
@@ -448,28 +544,57 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                                 onClick={() => setShowNotifications(!showNotifications)}
                             >
                                 <Bell size={19} />
-                                <span className="notification-dot" />
+                                {liveNotifications.length > 0 && <span className="notification-dot" />}
                             </button>
 
                             {showNotifications && (
-                                <div className="notification-popover">
-                                    <strong>Notifications</strong>
-                                    <p>
-                                        You're all caught up. Updates about your reports will
-                                        appear here when notifications are connected.
-                                    </p>
+                                <div className="notification-popover" style={{ width: 310, maxHeight: 340, overflowY: "auto" }}>
+                                    <strong>Activity Updates ({liveNotifications.length})</strong>
+                                    {liveNotifications.length === 0 ? (
+                                        <p>
+                                            No updates yet. When an NGO or government department reviews or resolves your report, it will appear here.
+                                        </p>
+                                    ) : (
+                                        <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                                            {liveNotifications.slice(0, 6).map((item) => (
+                                                <div
+                                                    key={item.id}
+                                                    onClick={() => {
+                                                        setSelectedReport(item.report);
+                                                        setShowNotifications(false);
+                                                    }}
+                                                    style={{
+                                                        padding: "8px 10px",
+                                                        borderRadius: 10,
+                                                        background: "rgba(218, 245, 222, 0.07)",
+                                                        cursor: "pointer"
+                                                    }}
+                                                >
+                                                    <strong style={{ fontSize: "0.82rem", display: "block" }}>
+                                                        {item.title} · {item.status}
+                                                    </strong>
+                                                    <p style={{ margin: "3px 0 0", fontSize: "0.78rem" }}>{item.note}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
 
-                        <div className="dashboard-user-chip">
+                        <button
+                            type="button"
+                            className="dashboard-user-chip"
+                            onClick={() => choosePage("My profile")}
+                            style={{ cursor: "pointer" }}
+                        >
                             <span className="dashboard-user-avatar">{initials || "E"}</span>
 
                             <span className="dashboard-user-details">
                                 <strong>{displayName}</strong>
                                 <small>Community member</small>
                             </span>
-                        </div>
+                        </button>
                     </div>
                 </header>
 
@@ -556,39 +681,39 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                                         <h2>Your impact at a glance</h2>
                                     </div>
 
-                                    <span className="demo-data-label">Preview data</span>
+                                    <span className="demo-data-label">Live account data</span>
                                 </div>
 
                                 <div className="dashboard-stats-grid">
                                     <StatCard
                                         icon={FileText}
                                         label="Reports submitted"
-                                        value="03"
-                                        note="Sample dashboard data"
+                                        value={reports.length.toString().padStart(2, "0")}
+                                        note="Total issues logged"
                                         tone="green"
                                     />
 
                                     <StatCard
                                         icon={Clock3}
-                                        label="Awaiting action"
-                                        value="01"
-                                        note="Sample dashboard data"
+                                        label="Awaiting review"
+                                        value={submittedCount.toString().padStart(2, "0")}
+                                        note="Pending verification"
                                         tone="amber"
                                     />
 
                                     <StatCard
                                         icon={Activity}
-                                        label="In progress"
-                                        value="01"
-                                        note="Sample dashboard data"
+                                        label="Under review / active"
+                                        value={activeCount.toString().padStart(2, "0")}
+                                        note="Being addressed"
                                         tone="blue"
                                     />
 
                                     <StatCard
                                         icon={CheckCircle2}
                                         label="Issues resolved"
-                                        value="01"
-                                        note="Sample dashboard data"
+                                        value={resolvedCount.toString().padStart(2, "0")}
+                                        note="Completed cleanups"
                                         tone="lime"
                                     />
                                 </div>
@@ -610,44 +735,48 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                                         </button>
                                     </div>
 
-                                    <div className="dashboard-report-list">
-                                        {recentReports.map((report) => {
-                                            const Icon = report.icon;
+                                    {recentReports.length === 0 ? (
+                                        <p className="dashboard-demo-note">
+                                            You haven't submitted any reports yet. Click "Report an issue" above to log your first environmental concern!
+                                        </p>
+                                    ) : (
+                                        <div className="dashboard-report-list">
+                                            {recentReports.map((report) => {
+                                                const Icon = report.icon;
 
-                                            return (
-                                                <article
-                                                    className="dashboard-report-row"
-                                                    key={report.id}
-                                                >
-                                                    <span
-                                                        className={`report-category-icon ${report.color}`}
+                                                return (
+                                                    <article
+                                                        className="dashboard-report-row"
+                                                        key={report.id}
+                                                        style={{ cursor: "pointer" }}
+                                                        onClick={() => setSelectedReport(report.raw)}
                                                     >
-                                                        <Icon size={20} />
-                                                    </span>
-
-                                                    <div className="dashboard-report-info">
-                                                        <strong>{report.title}</strong>
-                                                        <span>
-                                                            {report.id} <i /> {report.category}
+                                                        <span className={`report-category-icon ${report.color}`}>
+                                                            <Icon size={20} />
                                                         </span>
-                                                    </div>
 
-                                                    <span
-                                                        className={`dashboard-status status-${report.status
-                                                            .toLowerCase()
-                                                            .replace(/\s+/g, "-")}`}
-                                                    >
-                                                        {report.status}
-                                                    </span>
-                                                </article>
-                                            );
-                                        })}
-                                    </div>
+                                                        <div className="dashboard-report-info">
+                                                            <strong>{report.title}</strong>
+                                                            <span>
+                                                                {report.category} <i />{" "}
+                                                                {report.raw.createdAt
+                                                                    ? new Date(report.raw.createdAt).toLocaleDateString()
+                                                                    : ""}
+                                                            </span>
+                                                        </div>
 
-                                    <p className="dashboard-demo-note">
-                                        These are illustrative examples, not reports retrieved
-                                        from your account.
-                                    </p>
+                                                        <span
+                                                            className={`dashboard-status status-${report.status
+                                                                .toLowerCase()
+                                                                .replace(/\s+/g, "-")}`}
+                                                        >
+                                                            {report.status}
+                                                        </span>
+                                                    </article>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </section>
 
                                 <section className="dashboard-glass-panel location-panel">
@@ -657,12 +786,28 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                                             <h2>Explore your area</h2>
                                         </div>
 
-                                        <span className="location-panel-icon">
-                                            <Compass size={20} />
-                                        </span>
+                                        <button
+                                            type="button"
+                                            className="dashboard-text-link"
+                                            onClick={() => choosePage("Explore map")}
+                                        >
+                                            Open map <ArrowRight size={15} />
+                                        </button>
                                     </div>
 
-                                    <div className="dashboard-map-illustration">
+                                    <div
+                                        className="dashboard-map-illustration"
+                                        role="button"
+                                        tabIndex={0}
+                                        style={{ cursor: "pointer" }}
+                                        onClick={() => choosePage("Explore map")}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                                e.preventDefault();
+                                                choosePage("Explore map");
+                                            }
+                                        }}
+                                    >
                                         <div className="map-shape map-shape-one" />
                                         <div className="map-shape map-shape-two" />
                                         <div className="map-shape map-shape-three" />
@@ -699,14 +844,14 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
 
                                             <small>
                                                 {currentLocation ||
-                                                    "Enable location or choose an area manually."}
+                                                    "Enable location or open the interactive map."}
                                             </small>
                                         </div>
 
                                         <button
                                             className="dashboard-round-arrow"
-                                            onClick={() => setLocationPrompt(true)}
-                                            aria-label="Set location"
+                                            onClick={() => choosePage("Explore map")}
+                                            aria-label="Open interactive map"
                                         >
                                             <ArrowRight size={17} />
                                         </button>
@@ -779,6 +924,60 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                                         <label htmlFor="report-longitude">Longitude <span>(optional)</span></label>
                                         <input id="report-longitude" type="number" step="any" min="-180" max="180" value={reportForm.longitude} onChange={(event) => setReportForm({ ...reportForm, longitude: event.target.value })} />
                                     </div>
+                                </div>
+
+                                <div className="eco-form-field eco-form-field-full">
+                                    <label>Pin exact location on map <span>(optional — click map to auto-fill coordinates)</span></label>
+                                    <EcoMap
+                                        pickerMode={true}
+                                        pickedCoords={
+                                            reportForm.latitude !== "" && reportForm.longitude !== ""
+                                                ? { lat: Number(reportForm.latitude), lng: Number(reportForm.longitude) }
+                                                : null
+                                        }
+                                        onPickLocation={(lat, lng) =>
+                                            setReportForm((prev) => ({
+                                                ...prev,
+                                                latitude: lat.toFixed(6),
+                                                longitude: lng.toFixed(6)
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="eco-form-field eco-form-field-full">
+                                    <label htmlFor="report-images">
+                                        Evidence photos <span>(optional, up to 4 images, max 5MB each)</span>
+                                    </label>
+                                    <label htmlFor="report-images" className="eco-image-upload-box">
+                                        <ImagePlus size={22} />
+                                        <span>Click to upload photos (JPG, PNG, WEBP)</span>
+                                        <small>{reportImages.length}/4 images selected</small>
+                                    </label>
+                                    <input
+                                        id="report-images"
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp"
+                                        multiple
+                                        onChange={handleImageChange}
+                                        hidden
+                                    />
+                                    {imagePreviews.length > 0 && (
+                                        <div className="eco-image-preview-grid">
+                                            {imagePreviews.map((src, index) => (
+                                                <div key={src} className="eco-image-preview-item">
+                                                    <img src={src} alt={`Selected preview ${index + 1}`} />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeSelectedImage(index)}
+                                                        aria-label="Remove image"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="eco-report-form-actions eco-form-field-full">
@@ -887,7 +1086,10 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                                                     <p>{report.description}</p>
                                                     <p><MapPin size={15} /> {report.location?.address || "Location not provided"}</p>
                                                     <p>Category: {report.category}</p>
-                                                    <span className={`dashboard-status status-${(report.status || "Submitted").toLowerCase().replace(/\s+/g, "-")}`}>{report.status || "Submitted"}</span>
+                                                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                                        <span className={`dashboard-status status-${(report.status || "Submitted").toLowerCase().replace(/\s+/g, "-")}`}>{report.status || "Submitted"}</span>
+                                                        {report.isVerified && <span className="dashboard-status status-resolved">✓ Verified</span>}
+                                                    </div>
                                                     <small>Submitted: {report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "Date unavailable"}</small>
                                                     <span className="eco-report-view-link">View report details <ArrowRight size={15} /></span>
                                                 </article>
@@ -901,17 +1103,129 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                                 <Plus size={18} /> Submit another report
                             </button>
                         </section>
+                    ) : activePage === "Explore map" ? (
+                        <section className="dashboard-glass-panel dashboard-placeholder eco-report-page">
+                            <span className="placeholder-icon"><Compass size={28} /></span>
+                            <span className="dashboard-overline">LIVE ENVIRONMENTAL MAP</span>
+                            <h1>Explore reported issues</h1>
+                            <p>Browse geo-tagged environmental concerns across your community and inspect their status.</p>
+
+                            <EcoMap
+                                reports={mapReports}
+                                userCoords={
+                                    currentLocation
+                                        ? currentLocation.split(",").map((n) => Number(n.trim()))
+                                        : null
+                                }
+                                onSelectReport={(report) => setSelectedReport(report)}
+                            />
+                        </section>
+                    ) : activePage === "Community impact" ? (
+                        <section className="dashboard-glass-panel dashboard-placeholder eco-report-page">
+                            <span className="placeholder-icon"><Trees size={28} /></span>
+                            <span className="dashboard-overline">COLLECTIVE PROGRESS</span>
+                            <h1>Community environmental impact</h1>
+                            <p>Real-time impact generated by citizens, NGOs, and municipal authorities working together.</p>
+
+                            <div className="dashboard-stats-grid" style={{ width: "100%", marginTop: 22 }}>
+                                <StatCard
+                                    icon={FileText}
+                                    label="Community reports"
+                                    value={(communityImpact?.totalReports ?? 0).toString().padStart(2, "0")}
+                                    note="Logged across EcoConnect"
+                                    tone="green"
+                                />
+                                <StatCard
+                                    icon={BadgeCheck}
+                                    label="Verified issues"
+                                    value={(communityImpact?.verifiedReports ?? 0).toString().padStart(2, "0")}
+                                    note="Validated by partners"
+                                    tone="blue"
+                                />
+                                <StatCard
+                                    icon={Activity}
+                                    label="Active cleanups"
+                                    value={(communityImpact?.inProgressReports ?? 0).toString().padStart(2, "0")}
+                                    note="Currently in progress"
+                                    tone="amber"
+                                />
+                                <StatCard
+                                    icon={CheckCircle2}
+                                    label="Resolved issues"
+                                    value={(communityImpact?.resolvedReports ?? 0).toString().padStart(2, "0")}
+                                    note="Restored & closed"
+                                    tone="lime"
+                                />
+                            </div>
+
+                            {communityImpact?.categories?.length > 0 && (
+                                <div className="eco-detail-description" style={{ width: "100%", marginTop: 22 }}>
+                                    <span>Top Reported Environmental Categories</span>
+                                    <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+                                        {communityImpact.categories.map((item) => {
+                                            const pct = communityImpact.totalReports > 0
+                                                ? Math.round((item.count / communityImpact.totalReports) * 100)
+                                                : 0;
+                                            return (
+                                                <div key={item.category}>
+                                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.88rem", marginBottom: 4 }}>
+                                                        <span>{item.category}</span>
+                                                        <strong>{item.count} reports ({pct}%)</strong>
+                                                    </div>
+                                                    <div style={{ height: 8, borderRadius: 999, background: "rgba(190,235,198,0.12)", overflow: "hidden" }}>
+                                                        <div style={{ width: `${pct}%`, height: "100%", background: "#68d388", borderRadius: 999 }} />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </section>
                     ) : (
-                        <section className="dashboard-glass-panel dashboard-placeholder">
-                            <span className="placeholder-icon">
-                                {activePage === "Explore map" ? <Compass size={28} /> : activePage === "Community impact" ? <Trees size={28} /> : <CircleUserRound size={28} />}
-                            </span>
-                            <span className="dashboard-overline">COMING TO ECOCONNECT</span>
-                            <h1>{activePage}</h1>
-                            <p>This section will be connected to your account and environmental data in a future development stage.</p>
-                            <button className="dashboard-primary-button" onClick={() => choosePage("Overview")}>
-                                <ArrowRight size={17} /> Back to overview
-                            </button>
+                        <section className="dashboard-glass-panel dashboard-placeholder eco-report-page">
+                            <span className="placeholder-icon"><CircleUserRound size={28} /></span>
+                            <span className="dashboard-overline">ACCOUNT SETTINGS</span>
+                            <h1>My profile</h1>
+                            <p>Manage your EcoConnect identity and account preferences.</p>
+
+                            {reportError && <p role="alert" className="report-message report-error">{reportError}</p>}
+                            {reportSuccess && <p role="status" className="report-message report-success">{reportSuccess}</p>}
+
+                            <form className="eco-report-form" onSubmit={saveProfile}>
+                                <div className="eco-form-field">
+                                    <label htmlFor="profile-name">Display name</label>
+                                    <input
+                                        id="profile-name"
+                                        type="text"
+                                        maxLength={80}
+                                        value={profileName}
+                                        onChange={(e) => setProfileName(e.target.value)}
+                                        placeholder="Enter your display name"
+                                    />
+                                </div>
+
+                                <div className="eco-form-field">
+                                    <label>Email address</label>
+                                    <input type="text" value={user?.email || ""} disabled />
+                                </div>
+
+                                <div className="eco-form-field">
+                                    <label>Account role</label>
+                                    <input type="text" value={(user?.role || "citizen").toUpperCase()} disabled />
+                                </div>
+
+                                <div className="eco-form-field">
+                                    <label>Reports submitted</label>
+                                    <input type="text" value={`${reports.length} environmental reports`} disabled />
+                                </div>
+
+                                <div className="eco-report-form-actions eco-form-field-full">
+                                    <button type="submit" className="dashboard-primary-button" disabled={profileBusy}>
+                                        {profileBusy ? "Saving..." : "Save profile"}
+                                    </button>
+                                </div>
+                            </form>
                         </section>
                     )}
 
@@ -939,7 +1253,12 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                             <span className={`dashboard-status status-${(selectedReport.status || "Submitted").toLowerCase().replace(/\s+/g, "-")}`}>
                                 {selectedReport.status || "Submitted"}
                             </span>
-                            <small>Report ID: {selectedReport._id || "Unavailable"}</small>
+                            {selectedReport.isVerified && (
+                                <span className="dashboard-status status-resolved">✓ Verified</span>
+                            )}
+                            {selectedReport.assignedDepartment && (
+                                <small>Dept: {selectedReport.assignedDepartment}</small>
+                            )}
                         </div>
                         <div className="eco-detail-grid">
                             <div><span>Category</span><strong>{selectedReport.category || "Not specified"}</strong></div>
@@ -950,6 +1269,53 @@ export default function Dashboard({ user, onLogout, onBackHome }) {
                             <span>Description</span>
                             <p>{selectedReport.description || "No description provided."}</p>
                         </div>
+
+                        {selectedReport.imageUrls?.length > 0 && (
+                            <div className="eco-detail-images">
+                                <span>Attached Photos ({selectedReport.imageUrls.length})</span>
+                                <div className="eco-detail-image-grid">
+                                    {selectedReport.imageUrls.map((url, idx) => (
+                                        <a
+                                            key={url}
+                                            href={`http://localhost:5000${url}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            <img
+                                                src={`http://localhost:5000${url}`}
+                                                alt={`Report evidence ${idx + 1}`}
+                                            />
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedReport.statusNotes?.length > 0 && (
+                            <div className="eco-detail-description">
+                                <span>Action & Progress Timeline</span>
+                                <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+                                    {selectedReport.statusNotes.map((entry, idx) => (
+                                        <div
+                                            key={idx}
+                                            style={{
+                                                padding: "10px 12px",
+                                                borderRadius: 10,
+                                                border: "1px solid rgba(193,230,199,0.16)",
+                                                background: "rgba(3,25,15,0.45)"
+                                            }}
+                                        >
+                                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", marginBottom: 4 }}>
+                                                <strong>{entry.status} · {(entry.updatedByRole || "partner").toUpperCase()}</strong>
+                                                <small>{entry.updatedAt ? new Date(entry.updatedAt).toLocaleString() : ""}</small>
+                                            </div>
+                                            <p style={{ margin: 0, fontSize: "0.88rem" }}>{entry.note}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <button className="dashboard-primary-button" onClick={() => setSelectedReport(null)}>Close details</button>
                     </section>
                 </div>
@@ -1086,4 +1452,3 @@ function StatCard({ icon: Icon, label, value, note, tone }) {
 function SproutIcon() {
     return <Leaf size={23} />;
 }
-

@@ -65,7 +65,40 @@ const reportSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true
-        }
+        },
+
+        isVerified: {
+            type: Boolean,
+            default: false
+        },
+
+        verifiedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
+
+        assignedNgo: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
+
+        assignedDepartment: {
+            type: String,
+            trim: true,
+            default: ""
+        },
+
+        statusNotes: [
+            {
+                status: String,
+                note: String,
+                updatedByRole: String,
+                updatedByName: String,
+                updatedAt: { type: Date, default: Date.now }
+            }
+        ]
     },
     {
         timestamps: true

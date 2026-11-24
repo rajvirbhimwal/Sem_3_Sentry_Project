@@ -1,5 +1,5 @@
-
 const express = require("express");
+const auth = require("../middleware/auth");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
@@ -261,17 +261,28 @@ router.post("/verify-otp", verifyLimiter, async (req, res, next) => {
       });
     }
 
-    // Create the account if it doesn't exist.
-    // Existing user details and role are preserved.
+    const requestedRole = ["citizen", "ngo", "government"].includes(req.body?.role)
+      ? req.body.role
+      : "citizen";
+
+    const requestedName =
+      typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 80) : "";
+
+    const updateFields = {
+      emailVerified: true,
+      isActive: true,
+      role: requestedRole
+    };
+    if (requestedName) {
+      updateFields.name = requestedName;
+    }
+
+    // Create or update the account with the selected role and optional display name.
     const user = await User.findOneAndUpdate(
       { email: identifier },
       {
-        $setOnInsert: {
-          email: identifier,
-          role: "citizen",
-          emailVerified: true,
-          isActive: true
-        }
+        $setOnInsert: { email: identifier },
+        $set: updateFields
       },
       {
         new: true,
@@ -324,6 +335,40 @@ router.post("/verify-otp", verifyLimiter, async (req, res, next) => {
     next(error);
   }
 });
+// PATCH /api/auth/profile — Update display name
+router.patch("/profile", auth, async (req, res, next) => {
+  try {
+    const name =
+      typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 80) : "";
 
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: { name } },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found."
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Profile updated successfully.",
+      user: {
+        id: user._id.toString(),
+        identifier: user.email,
+        email: user.email,
+        method: "email",
+        name: user.name,
+        role: user.role,
+        emailVerified: user.emailVerified
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 module.exports = router;
-

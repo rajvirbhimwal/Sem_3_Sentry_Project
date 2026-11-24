@@ -1,4 +1,6 @@
 import Dashboard from "./Dashboard";
+import NgoDashboard from "./NgoDashboard";
+import GovDashboard from "./GovDashboard";
 import React, { useState, useEffect } from 'react';
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, BadgeCheck, BarChart3, Bell,
@@ -25,8 +27,8 @@ function AuthModal({ onClose, onLoginSuccess }) {
   const [stage, setStage] = useState('login');
   const [value, setValue] = useState('');
   const [otp, setOtp] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('citizen');
+  const [name, setName] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -36,8 +38,6 @@ function AuthModal({ onClose, onLoginSuccess }) {
     e.preventDefault();
     const identifier = method === 'phone' ? value.replace(/\D/g, '') : value.trim().toLowerCase();
     if (!identifier) { setNotice(method === 'email' ? 'Enter your email address to continue.' : 'Enter your phone number to continue.'); return; }
-    // Trim and normalize email input; let the backend validate it.
-    // This avoids stale/overly strict client-side validation blocking valid addresses.
     if (method === 'phone' && identifier.length !== 10) { setNotice('Enter a valid 10-digit Indian mobile number.'); return; }
 
     setNotice('');
@@ -62,7 +62,6 @@ function AuthModal({ onClose, onLoginSuccess }) {
       setBusy(false);
     }
   }
-
 
   async function verifyOtp(e) {
     e.preventDefault();
@@ -89,7 +88,9 @@ function AuthModal({ onClose, onLoginSuccess }) {
         body: JSON.stringify({
           method,
           identifier,
-          otp: cleanOtp
+          otp: cleanOtp,
+          role,
+          name
         })
       });
 
@@ -119,8 +120,6 @@ function AuthModal({ onClose, onLoginSuccess }) {
       setBusy(false);
     }
   }
-
-
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
@@ -163,6 +162,33 @@ function AuthModal({ onClose, onLoginSuccess }) {
             <button className={method === 'phone' ? 'active' : ''} onClick={() => { setMethod('phone'); setNotice(''); }} role="tab" aria-selected={method === 'phone'}><Smartphone size={16} /> Phone</button>
           </div>
           <form onSubmit={requestOtp}>
+            <label htmlFor="role-select">I am joining as</label>
+            <div className="input-wrap" style={{ marginBottom: 12 }}>
+              <Users size={17} />
+              <select
+                id="role-select"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                style={{ width: '100%', border: 'none', background: 'transparent', font: 'inherit', outline: 'none' }}
+              >
+                <option value="citizen">Citizen (Report & Track Issues)</option>
+                <option value="ngo">NGO Partner (Verify & Resolve Issues)</option>
+                <option value="government">Government Official (Monitor & Coordinate)</option>
+              </select>
+            </div>
+
+            <label htmlFor="org-name">{role === 'citizen' ? 'Your name (optional)' : 'Organisation / Department name'}</label>
+            <div className="input-wrap" style={{ marginBottom: 12 }}>
+              <BadgeCheck size={17} />
+              <input
+                id="org-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={role === 'ngo' ? 'e.g. Green Earth Foundation' : role === 'government' ? 'e.g. Municipal Environment Dept' : 'e.g. Rajvir'}
+              />
+            </div>
+
             <label htmlFor="contact">{method === 'email' ? 'Email address' : 'Phone number'}</label>
             <div className="input-wrap">
               {method === 'email' ? <Mail size={17} /> : <Smartphone size={17} />}
@@ -338,7 +364,6 @@ function Footer({ openAuth }) {
   </footer>;
 }
 
-
 export default function App() {
   const [authOpen, setAuthOpen] = useState(false);
 
@@ -370,7 +395,6 @@ export default function App() {
   }, []);
 
   function handleLoginSuccess(loggedInUser) {
-    // Update the application state after OTP verification.
     setUser(loggedInUser);
     setAuthOpen(false);
   }
@@ -383,17 +407,40 @@ export default function App() {
     setAuthOpen(false);
   }
 
-  // IMPORTANT: Show the dashboard after successful login.
   if (user) {
+    if (user.role === "ngo") {
+      return (
+        <NgoDashboard
+          user={user}
+          onLogout={handleLogout}
+          onBackHome={() => setUser(null)}
+        />
+      );
+    }
+
+    if (user.role === "government") {
+      return (
+        <GovDashboard
+          user={user}
+          onLogout={handleLogout}
+          onBackHome={() => setUser(null)}
+        />
+      );
+    }
+
     return (
       <Dashboard
         user={user}
         onLogout={handleLogout}
+        onBackHome={() => setUser(null)}
+        onUpdateUser={(updatedUser) => {
+          setUser(updatedUser);
+          localStorage.setItem("ecoconnect_user", JSON.stringify(updatedUser));
+        }}
       />
     );
   }
 
-  // Show the original homepage when the user is not logged in.
   return (
     <>
       <Header openAuth={() => setAuthOpen(true)} />
@@ -421,4 +468,3 @@ export default function App() {
     </>
   );
 }
-

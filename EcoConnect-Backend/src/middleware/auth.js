@@ -4,7 +4,6 @@ function auth(req, res, next) {
     try {
         const authHeader = req.headers.authorization;
 
-
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
             return res.status(401).json({
                 success: false,
@@ -25,8 +24,6 @@ function auth(req, res, next) {
         };
 
         next();
-
-
     } catch (error) {
         return res.status(401).json({
             success: false,
@@ -34,5 +31,17 @@ function auth(req, res, next) {
         });
     }
 }
+
+auth.requireRole = function (...allowedRoles) {
+    return (req, res, next) => {
+        if (!req.user || !allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: "Access denied. You do not have permission for this action."
+            });
+        }
+        next();
+    };
+};
 
 module.exports = auth;
