@@ -187,7 +187,7 @@ export default function Dashboard({ user, onLogout, onBackHome, onUpdateUser }) 
         setReportError("");
 
         try {
-            const response = await fetch("http://localhost:5000/api/reports/my", {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/reports/my`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await response.json();
@@ -209,7 +209,7 @@ export default function Dashboard({ user, onLogout, onBackHome, onUpdateUser }) 
         if (!token) return;
 
         try {
-            const response = await fetch("http://localhost:5000/api/reports/map", {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/reports/map`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await response.json();
@@ -224,7 +224,7 @@ export default function Dashboard({ user, onLogout, onBackHome, onUpdateUser }) 
         if (!token) return;
 
         try {
-            const response = await fetch("http://localhost:5000/api/reports/impact", {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/reports/impact`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await response.json();
@@ -269,7 +269,7 @@ export default function Dashboard({ user, onLogout, onBackHome, onUpdateUser }) 
         });
 
         try {
-            const response = await fetch("http://localhost:5000/api/reports", {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/reports`, {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${token}`
@@ -313,7 +313,7 @@ export default function Dashboard({ user, onLogout, onBackHome, onUpdateUser }) 
 
         setProfileBusy(true);
         try {
-            const response = await fetch("http://localhost:5000/api/auth/profile", {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/auth/profile`, {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",
@@ -1277,12 +1277,12 @@ export default function Dashboard({ user, onLogout, onBackHome, onUpdateUser }) 
                                     {selectedReport.imageUrls.map((url, idx) => (
                                         <a
                                             key={url}
-                                            href={`http://localhost:5000${url}`}
+                                            href={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}${url}`}
                                             target="_blank"
                                             rel="noreferrer"
                                         >
                                             <img
-                                                src={`http://localhost:5000${url}`}
+                                                src={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}${url}`}
                                                 alt={`Report evidence ${idx + 1}`}
                                             />
                                         </a>

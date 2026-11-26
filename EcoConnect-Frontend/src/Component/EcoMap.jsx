@@ -202,7 +202,7 @@ export default function EcoMap({
                                     </p>
                                     {report.imageUrls?.[0] && (
                                         <img
-                                            src={`http://localhost:5000${report.imageUrls[0]}`}
+                                            src={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}${report.imageUrls[0]}`}
                                             alt={report.title}
                                             className="eco-popup-thumb"
                                         />

@@ -62,7 +62,7 @@ export default function GovDashboard({ user, onLogout, onBackHome }) {
         setLoading(true);
         setError("");
         try {
-            const response = await fetch("http://localhost:5000/api/reports/all", {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/reports/all`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await response.json();
@@ -103,7 +103,7 @@ export default function GovDashboard({ user, onLogout, onBackHome }) {
 
         try {
             const response = await fetch(
-                `http://localhost:5000/api/reports/${selectedReport._id}/gov-action`,
+                `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/reports/${selectedReport._id}/gov-action`,
                 {
                     method: "PATCH",
                     headers: {
@@ -598,12 +598,12 @@ export default function GovDashboard({ user, onLogout, onBackHome }) {
                                     {selectedReport.imageUrls.map((url, idx) => (
                                         <a
                                             key={url}
-                                            href={`http://localhost:5000${url}`}
+                                            href={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}${url}`}
                                             target="_blank"
                                             rel="noreferrer"
                                         >
                                             <img
-                                                src={`http://localhost:5000${url}`}
+                                                src={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}${url}`}
                                                 alt={`Evidence ${idx + 1}`}
                                             />
                                         </a>
