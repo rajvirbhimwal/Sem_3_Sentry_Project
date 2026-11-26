@@ -8,9 +8,15 @@ const auth = require("../middleware/auth");
 
 const router = express.Router();
 
-// Ensure uploads/reports directory exists
-const uploadDir = path.join(__dirname, "../../uploads/reports");
-fs.mkdirSync(uploadDir, { recursive: true });
+// Ensure uploads/reports directory exists (use /tmp on Vercel read-only filesystem)
+const uploadDir =
+    process.env.VERCEL === "1"
+        ? path.join("/tmp", "uploads", "reports")
+        : path.join(__dirname, "../../uploads/reports");
+
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -116,6 +122,7 @@ router.get("/my", auth, async (req, res, next) => {
         next(error);
     }
 });
+
 // GET /api/reports/map — Get all reports with valid coordinates for the interactive map
 router.get("/map", auth, async (req, res, next) => {
     try {
@@ -135,6 +142,7 @@ router.get("/map", auth, async (req, res, next) => {
         next(error);
     }
 });
+
 // GET /api/reports/all — Get all reports (for NGO and Government dashboards)
 router.get(
     "/all",
@@ -242,6 +250,7 @@ router.patch(
         }
     }
 );
+
 // PATCH /api/reports/:id/gov-action — Government assigns department & updates official status
 router.patch(
     "/:id/gov-action",
@@ -305,36 +314,38 @@ router.patch(
         }
     }
 );
+
 // GET /api/reports/impact — Live community-wide impact metrics
 router.get("/impact", auth, async (req, res, next) => {
-  try {
-    const [totalReports, resolvedReports, verifiedReports, inProgressReports, categoryAgg] =
-      await Promise.all([
-        Report.countDocuments(),
-        Report.countDocuments({ status: "Resolved" }),
-        Report.countDocuments({ isVerified: true }),
-        Report.countDocuments({ status: "In Progress" }),
-        Report.aggregate([
-          { $group: { _id: "$category", count: { $sum: 1 } } },
-          { $sort: { count: -1 } }
-        ])
-      ]);
+    try {
+        const [totalReports, resolvedReports, verifiedReports, inProgressReports, categoryAgg] =
+            await Promise.all([
+                Report.countDocuments(),
+                Report.countDocuments({ status: "Resolved" }),
+                Report.countDocuments({ isVerified: true }),
+                Report.countDocuments({ status: "In Progress" }),
+                Report.aggregate([
+                    { $group: { _id: "$category", count: { $sum: 1 } } },
+                    { $sort: { count: -1 } }
+                ])
+            ]);
 
-    return res.json({
-      success: true,
-      impact: {
-        totalReports,
-        resolvedReports,
-        verifiedReports,
-        inProgressReports,
-        categories: categoryAgg.map((c) => ({
-          category: c._id,
-          count: c.count
-        }))
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
+        return res.json({
+            success: true,
+            impact: {
+                totalReports,
+                resolvedReports,
+                verifiedReports,
+                inProgressReports,
+                categories: categoryAgg.map((c) => ({
+                    category: c._id,
+                    count: c.count
+                }))
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
 });
+
 module.exports = router;
